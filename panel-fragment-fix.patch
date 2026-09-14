@@ -1,0 +1,69 @@
+diff --git a/panel/panel.go b/panel/panel.go
+index 3d4329c..9a6fb64 100644
+--- a/panel/panel.go
++++ b/panel/panel.go
+@@ -2,6 +2,7 @@ package panel
+ 
+ import (
+ 	"encoding/json"
++	"fmt"
+ 	"os"
+ 	"sync"
+ 
+@@ -28,6 +29,29 @@ import (
+ 	"github.com/XrayR-project/XrayR/service/controller"
+ )
+ 
++// decodeFragment accepts both Xray fragment files (an array/object) and a
++// complete Xray section wrapped in {"outbounds": [...]} or {"routing":{...}}.
++// This keeps panel generated node configuration from replacing user supplied
++// fragments: fragments are decoded once at core construction and remain part
++// of the immutable core configuration for the lifetime of the process.
++func decodeFragment(data []byte, section string, dst interface{}) error {
++	var value interface{}
++	if err := json.Unmarshal(data, &value); err != nil { return err }
++	if obj, ok := value.(map[string]interface{}); ok {
++		if nested, exists := obj[section]; exists {
++			value = nested
++		} else if section == "outbounds" {
++			value = []interface{}{obj}
++		}
++	}
++	normalized, err := json.Marshal(value)
++	if err != nil { return err }
++	if err := json.Unmarshal(normalized, dst); err != nil {
++		return fmt.Errorf("invalid %s fragment: %w", section, err)
++	}
++	return nil
++}
++
+ // Panel Structure
+ type Panel struct {
+ 	access      sync.Mutex
+@@ -83,7 +107,7 @@ func (p *Panel) loadCore(panelConfig *Config) *core.Instance {
+ 		if data, err := os.ReadFile(panelConfig.RouteConfigPath); err != nil {
+ 			log.Panicf("Failed to read Routing config file at: %s", panelConfig.RouteConfigPath)
+ 		} else {
+-			if err = json.Unmarshal(data, coreRouterConfig); err != nil {
++			if err = decodeFragment(data, "routing", coreRouterConfig); err != nil {
+ 				log.Panicf("Failed to unmarshal Routing config: %s", panelConfig.RouteConfigPath)
+ 			}
+ 		}
+@@ -98,7 +122,7 @@ func (p *Panel) loadCore(panelConfig *Config) *core.Instance {
+ 		if data, err := os.ReadFile(panelConfig.InboundConfigPath); err != nil {
+ 			log.Panicf("Failed to read Custom Inbound config file at: %s", panelConfig.OutboundConfigPath)
+ 		} else {
+-			if err = json.Unmarshal(data, &coreCustomInboundConfig); err != nil {
++			if err = decodeFragment(data, "inbounds", &coreCustomInboundConfig); err != nil {
+ 				log.Panicf("Failed to unmarshal Custom Inbound config: %s", panelConfig.OutboundConfigPath)
+ 			}
+ 		}
+@@ -117,7 +141,7 @@ func (p *Panel) loadCore(panelConfig *Config) *core.Instance {
+ 		if data, err := os.ReadFile(panelConfig.OutboundConfigPath); err != nil {
+ 			log.Panicf("Failed to read Custom Outbound config file at: %s", panelConfig.OutboundConfigPath)
+ 		} else {
+-			if err = json.Unmarshal(data, &coreCustomOutboundConfig); err != nil {
++			if err = decodeFragment(data, "outbounds", &coreCustomOutboundConfig); err != nil {
+ 				log.Panicf("Failed to unmarshal Custom Outbound config: %s", panelConfig.OutboundConfigPath)
+ 			}
+ 		}

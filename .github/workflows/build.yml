@@ -1,0 +1,18 @@
+name: build-xrayr-custom
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.1'
+      - run: sh build-custom.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: XrayR-v25.3.6-custom
+          path: |
+            XrayR-v25.3.6-custom
+            XrayR-v25.3.6-custom.sha256
